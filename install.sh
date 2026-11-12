@@ -7,6 +7,7 @@
 set -euo pipefail
 
 src="$(cd "$(dirname "$0")" && pwd)"
+cd "$src"   # globs below are relative to the repo, wherever the script is run from
 dest="${CLAUDE_HOME:-$HOME/.claude}"
 stamp="$(date +%Y%m%d-%H%M%S)"
 backup="$dest/backups/responsible-build-$stamp"
