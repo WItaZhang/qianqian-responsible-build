@@ -1,13 +1,14 @@
 # qianqian-responsible-build
 
-A Claude Code setup for building software with agents. The agent writes the code; checks it cannot talk its way past decide when the work is done.
+A Claude Code setup for building software with agents, from a vague idea to a first version and through every feature after it. The agent writes the code; checks it cannot talk its way past decide when the work is done.
 
 [中文说明](README.zh-CN.md)
 
 ```
-/spec add rise alerts          one or two questions, a one-screen spec, you reply "ok"
-/build                         tests → lock → implement → independent review → delivery report
-unlock, commit, /retro         the mistakes from this task become rules for the next one
+idea → first version     idea-kickoff    interview → worked examples → plan → parallel builders in worktrees → orchestrator verifies and merges
+each feature after       /spec           one or two questions, a one-screen spec, you reply "ok"
+                         /build          tests → lock → implement → independent review → delivery report
+after every task         /retro          the mistakes from this task become rules for the next one
 ```
 
 ## Why this exists
@@ -22,7 +23,19 @@ Each failure gets its own gate, and the gate sits wherever it is hardest to bypa
 | Changes too much | Scope and "not doing this time" in the spec; a reviewer that checks for out-of-scope edits | A second model, then you |
 | Claims it is done | Tests locked before implementation; a stop hook that reruns them every time the agent tries to finish | Code |
 
-## How a feature gets built
+## From idea to first version: `idea-kickoff`
+
+Most agent projects that go wrong do not fail on code. They fail because what got built is not what the person had in mind, and nobody noticed until the end. `idea-kickoff` moves every judgment call to before the code, in five stages. Each stage ends with you.
+
+1. **Interview.** The agent first checks the codebase and common practice on its own. It then splits the open points into two groups. Points it can infer safely, and that are cheap to change, become a list of default assumptions. Points that are expensive to get wrong or depend on your judgment become questions, asked in one numbered batch with a recommended answer each. You reply only to the numbers you disagree with. It usually takes one or two rounds. The output is `spec.md`, the product spec.
+2. **Worked examples.** The agent drafts 10–20 cases of input and expected output, typical ones and nasty ones. It puts first the cases where it had to infer the answer or is unsure, marked ⚠️. You review those and skim the rest. Disagreements that reveal a new rule go back into the spec, and the agent checks which other examples that rule affects. The approved examples become test fixtures.
+3. **Plan.** Tech stack, with the hard-to-reverse choices flagged: database, data format, login, deployment. Modules, each explainable in one sentence and testable alone, with exclusive file ownership. Waves ordered by dependency, and acceptance criteria per module. You review all of it once.
+4. **Parallel build.** The main session becomes the orchestrator. It commits the interfaces and a shared `verify.sh`, then gives each module its own git worktree and builder. Builders work against stubs of each other's interfaces, follow `/build`, and lock their tests without stopping, since the tests come from examples you approved. The orchestrator re-runs every builder's tests itself, checks that each assigned example has a test that is not watered down, merges wave by wave, and runs all examples end to end at the end.
+5. **Iterate on real cases.** "It's not accurate" gets turned into input, actual output and expected output, then a failing test, then a fix.
+
+Once the first version is stable, small features go through `/spec` and `/build`. Several features at once, or a change to the architecture, go back through stages 2–4.
+
+## Each feature after that: `/spec` and `/build`
 
 **1. `/spec`.** The agent reads the relevant code, restates how it works today, and asks at most five questions, multiple choice with a recommendation. A question is only asked if the answer changes the approach, cannot be found in the code, and is expensive to guess wrong. Everything else becomes a listed default assumption you can strike out. The result fits on one screen: goal, risk level, scope, key decisions, acceptance examples, default assumptions, change log.
 
@@ -36,8 +49,6 @@ It implements until the project's `.claude/verify.sh` passes, has a read-only re
 **3. You unlock, commit, and run `/retro`.** The first time a mistake happens it becomes a line in the project's `CLAUDE.md`. If it happens again, prose has failed, and it becomes a test, a lint rule or a line in `verify.sh`.
 
 Bugs skip the spec: write a failing reproduction test, lock, fix. Trivial edits skip everything.
-
-**New projects** go through `idea-kickoff`. One round of batched questions, then 10–20 worked examples you review, then a plan that splits the work into modules and waves. The main session acts as orchestrator. It defines interfaces, gives each module its own git worktree and builder, and re-runs every builder's tests before merging. Builders follow `/build` but do not stop to show tests, because those tests come from examples you already approved.
 
 ## Design notes
 
@@ -68,6 +79,18 @@ The common objection to spec-first development is that it turns into waterfall: 
 - What and how-to-judge, plus the decisions that must not be guessed: interfaces, data structures, what to reuse, what to leave alone. No implementation steps.
 - Representative examples only, normally ten or fewer. Edge cases live in tests, which fail when they go stale. Prose does not.
 - A change log for discoveries during implementation, and archiving when the work ships. The spec is not maintained forever; the tests are.
+
+### Agree on examples before anyone writes code
+
+People are bad at writing down what they want and good at recognising it. Asking someone to specify the output of a fuzzy feature goes poorly. Showing them twenty concrete outputs and asking which ones are wrong works much better. So `idea-kickoff` reverses the usual split of work: the agent drafts the complete examples, and you only judge them. The ⚠️ marking aims your attention at the cases where the agent guessed. The examples then serve three purposes: they are your review, they are the acceptance tests, and they show which rules the spec missed. A disagreement about one example often turns out to be an unwritten rule that changes three others.
+
+### Define the interfaces, then build in parallel
+
+Parallel agents only help if they do not need each other. The plan therefore splits by responsibility, not by layer. Every module owns its files outright; shared files belong to the orchestrator; dependencies run through interfaces committed before the first wave. A builder that needs another module's interface uses a stub. A builder that needs another module's real behaviour waits for the next wave. If a module cannot be explained or tested without another one, the split went too far and the two are merged. In practice the limit on parallelism is how much a person can review, not how many agents can run. OpenAI found engineers could manage three to five agent sessions at once ([OpenAI](https://openai.com/index/harness-engineering/)).
+
+### The orchestrator re-runs; it does not trust reports
+
+A builder's "all tests pass" is a claim. The orchestrator re-runs the tests in that builder's worktree, reads the delivery report's list of interpretations, and records separately anything that only passed against stubs, because that proves the module's logic and nothing about integration. It escalates to you in two cases only: a module still fails after two rounds of rework, or a fix would change something you already approved. Everything else it decides itself, which is what keeps you out of the loop during the build.
 
 ### Spend human attention where a mistake would cost the most
 
