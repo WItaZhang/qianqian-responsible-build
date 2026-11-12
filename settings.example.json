@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/guard.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/stop-verify.sh",
+            "timeout": 300,
+            "statusMessage": "验收中：检查测试是否被改动并运行 .claude/verify.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/stop-verify.sh",
+            "timeout": 300,
+            "statusMessage": "验收子 agent：检查测试是否被改动并运行 .claude/verify.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
